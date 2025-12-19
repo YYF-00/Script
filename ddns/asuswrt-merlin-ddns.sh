@@ -12,11 +12,11 @@ export WAN_IP=${1:-$(nvram get wan0_ipaddr)}
 export DDNS_SECRET_ID="你的新ID"
 export DDNS_SECRET_KEY="你的新KEY"
 
+SCRIPT_DIR=$(cd "$(dirname "$0")"; pwd)
 SUCCESS=0
 
 # 查询记录 - 使用绝对路径
-response=$(bash "./dnspod_api.sh")
-
+response=$(bash "$SCRIPT_DIR/dnspod_api.sh")
 if [[ -z "$response" ]]; then
     logger -t "DDNS_CUSTOM" " API 返回为空，请检查网络"
     exit 1
@@ -25,19 +25,19 @@ fi
 if echo "$response" | grep -q "Error"; then
     if echo "$response" | grep -q "ResourceNotFound.NoDataOfRecord"; then
         logger -t "DDNS_CUSTOM" " 不存在记录，开始创建"
-        bash ./dnspod_api.sh "create_record" && SUCCESS=1
+        bash "$SCRIPT_DIR/dnspod_api.sh" "create_record" && SUCCESS=1
     else
         logger -t "DDNS_CUSTOM" " API 错误: $response"
     fi
 else
     # 使用正确的变量名执行 jq
-    record_id=$(echo "$response" | jq -r '.RecordList[0].RecordId // empty')
-    record_ip=$(echo "$response" | jq -r '.RecordList[0].Value // empty')
+    record_id=$(echo "$response" | jq -r '.Response.RecordList[0].RecordId // empty')
+    record_ip=$(echo "$response" | jq -r '.Response.RecordList[0].Value // empty')
 
     if [[ -n "$record_id" ]]; then
         if [[ "$record_ip" != "$WAN_IP" ]]; then
             logger -t "DDNS_CUSTOM" " IP 变化 ($record_ip -> $WAN_IP)，开始修改"
-            bash "$DIR/dnspod_api.sh" "modify_record" "$record_id" && SUCCESS=1
+            bash "$SCRIPT_DIR/dnspod_api.sh" "modify_record" "$record_id" && SUCCESS=1
         else
             logger -t "DDNS_CUSTOM" " IP 未改变，状态正常"
             SUCCESS=1
