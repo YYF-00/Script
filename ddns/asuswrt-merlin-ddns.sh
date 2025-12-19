@@ -18,16 +18,16 @@ SUCCESS=0
 response=$(bash "./dnspod_api.sh")
 
 if [[ -z "$response" ]]; then
-    echo "DDNS_CUSTOM: API 返回为空，请检查网络"
+    logger -t "DDNS_CUSTOM" " API 返回为空，请检查网络"
     exit 1
 fi
 
 if echo "$response" | grep -q "Error"; then
     if echo "$response" | grep -q "ResourceNotFound.NoDataOfRecord"; then
-        echo "DDNS_CUSTOM: 不存在记录，开始创建"
+        logger -t "DDNS_CUSTOM" " 不存在记录，开始创建"
         bash ./dnspod_api.sh "create_record" && SUCCESS=1
     else
-        echo "DDNS_CUSTOM: API 错误: $response"
+        logger -t "DDNS_CUSTOM" " API 错误: $response"
     fi
 else
     # 使用正确的变量名执行 jq
@@ -36,14 +36,14 @@ else
 
     if [[ -n "$record_id" ]]; then
         if [[ "$record_ip" != "$WAN_IP" ]]; then
-            echo "DDNS_CUSTOM: IP 变化 ($record_ip -> $WAN_IP)，开始修改"
+            logger -t "DDNS_CUSTOM" " IP 变化 ($record_ip -> $WAN_IP)，开始修改"
             bash "$DIR/dnspod_api.sh" "modify_record" "$record_id" && SUCCESS=1
         else
-            echo "DDNS_CUSTOM: IP 未改变，状态正常"
+            logger -t "DDNS_CUSTOM" " IP 未改变，状态正常"
             SUCCESS=1
         fi
     else
-        echo "DDNS_CUSTOM: 无法解析 RecordId"
+        logger -t "DDNS_CUSTOM" " 无法解析 RecordId"
     fi
 fi
 
