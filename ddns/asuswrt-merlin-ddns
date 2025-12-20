@@ -16,7 +16,7 @@ SCRIPT_DIR=$(cd "$(dirname "$0")"; pwd)
 SUCCESS=0
 
 # 查询记录 - 使用绝对路径
-response=$(bash "$SCRIPT_DIR/dnspod_api.sh")
+response=$(bash "$SCRIPT_DIR/dnspod_api")
 if [[ -z "$response" ]]; then
     logger -t "DDNS_CUSTOM" " API 返回为空，请检查网络"
     exit 1
@@ -25,7 +25,7 @@ fi
 if echo "$response" | grep -q "Error"; then
     if echo "$response" | grep -q "ResourceNotFound.NoDataOfRecord"; then
         logger -t "DDNS_CUSTOM" " 不存在记录，开始创建"
-        bash "$SCRIPT_DIR/dnspod_api.sh" "create_record" && SUCCESS=1
+        bash "$SCRIPT_DIR/dnspod_api" "create_record" && SUCCESS=1
     else
         logger -t "DDNS_CUSTOM" " API 错误: $response"
     fi
@@ -37,7 +37,7 @@ else
     if [[ -n "$record_id" ]]; then
         if [[ "$record_ip" != "$WAN_IP" ]]; then
             logger -t "DDNS_CUSTOM" " IP 变化 ($record_ip -> $WAN_IP)，开始修改"
-            bash "$SCRIPT_DIR/dnspod_api.sh" "modify_record" "$record_id" && SUCCESS=1
+            bash "$SCRIPT_DIR/dnspod_api" "modify_record" "$record_id" && SUCCESS=1
         else
             logger -t "DDNS_CUSTOM" " IP 未改变，状态正常"
             SUCCESS=1

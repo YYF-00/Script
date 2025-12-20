@@ -4,7 +4,7 @@
 fc disable
 
 # 调用更更新脚本
-bash /opt/config/asuswrt-merlin-ddns
+/opt/config/ddns/asuswrt-merlin-ddns "$1"
 
 # 开启硬件加速
 fc enable
