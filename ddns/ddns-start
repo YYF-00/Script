@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# 关闭华硕路由器硬件加速
+fc disable
+
+# 调用更更新脚本
+bash /opt/config/asuswrt-merlin-ddns
+
+# 开启硬件加速
+fc enable
