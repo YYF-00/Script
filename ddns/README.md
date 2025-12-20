@@ -67,8 +67,6 @@ DDNS 主逻辑处理脚本：
    export DDNS_SECRET_ID="你的腾讯云Secret ID"
    export DDNS_SECRET_KEY="你的腾讯云Secret Key"
    ```
-
-
 2. 将脚本部署到路由器适当位置（通常为 `/opt/config/`）
 3. 将[ddns-start](./ddns-start) 移动到 `/jffs/scripts/`
 4. 修改 `/jffs/scripts/ddns-start` 文件中调用 `asuswrt-merlin-ddns` 脚本的调用路径
