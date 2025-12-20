@@ -74,12 +74,12 @@ DDNS 主逻辑处理脚本：
    dos2unix dnspod_api
    dos2unix ddns-start
    ```
-3. 将[ddns-start](./ddns-start) 移动到 `/jffs/scripts/`
-4. 修改 `/jffs/scripts/ddns-start` 文件中调用 `asuswrt-merlin-ddns` 脚本的调用路径
+4. 将[ddns-start](./ddns-start) 移动到 `/jffs/scripts/`
+5. 修改 `/jffs/scripts/ddns-start` 文件中调用 `asuswrt-merlin-ddns` 脚本的调用路径
    ```bash
    /opt/config/ddns/asuswrt-merlin-ddns
     ```
-5. 在路由器管理界面开启并配置自定义 DDNS 服务
+6. 在路由器管理界面开启并配置自定义 DDNS 服务
 
 ## 注意事项
 - 确保路由器已安装 `jq` 工具用于 JSON 解析
