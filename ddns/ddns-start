@@ -1,9 +1,12 @@
-#!/bin/bash
+#!/bin/sh
 
-# 关闭华硕路由器硬件加速
+# 强制在第一行注入路径，不依赖系统环境
+export PATH=/opt/bin:/opt/sbin:/bin:/usr/bin:/sbin:/usr/sbin:$PATH
+
+# 关闭硬件加速
 fc disable
 
-# 调用更更新脚本
+# 执行真正的更新脚本，并把错误彻底抓出来
 /opt/config/ddns/asuswrt-merlin-ddns "$1"
 
 # 开启硬件加速
