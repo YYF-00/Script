@@ -1,0 +1,17 @@
+# 1. 发送唤醒包
+/usr/sbin/ether-wake -i br0 22:31:6C:04:0D:4B
+
+# 2. 循环探测 PVE 的 IP (假设是 192.168.50.5)
+# 尝试 ping 5 次，每次间隔 2 秒
+COUNT=0
+while [ $COUNT -lt 10 ]; do
+    if ping -c 1 -W 1  192.168.50.5  > /dev/null; then
+        echo "Success"
+        exit 0
+    fi
+    sleep 3
+    COUNT=$((COUNT+1))
+done
+
+echo "Timeout"
+exit 0
