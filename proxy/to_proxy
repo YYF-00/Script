@@ -1,0 +1,35 @@
+#!/bin/bash
+
+# 1. 变量定义
+MAIN_GW="192.168.50.1"
+SIDE_GW="192.168.50.11"
+# 自动获取你当前 SSH 连接的客户端 IP
+USER_IP=$(echo $SSH_CLIENT | awk '{print $1}')
+
+echo "------------------------------------------"
+echo "检测到当前远程登录 IP: $USER_IP"
+echo "步骤 1: 正在锁定回程路由，防止 VPN 断连..."
+
+# 2. 核心保护：强制让发往你电脑的包走主路由
+ip route add $USER_IP via $MAIN_GW 2>/dev/null
+
+# 3. 切换默认网关和 DNS
+echo "步骤 2: 正在将默认网关指向旁路由 $SIDE_GW ..."
+ip route del default 2>/dev/null
+ip route add default via $SIDE_GW
+
+cp /etc/resolv.conf /etc/resolv.conf.bak 2>/dev/null
+echo "nameserver $SIDE_GW" > /etc/resolv.conf
+echo "nameserver $MAIN_GW" >> /etc/resolv.conf
+
+# 4. 连通性检查
+echo "步骤 3: 检查网络加速状态..."
+if curl -I -m 5 https://www.google.com | grep -q "HTTP/"; then
+    echo "成功：PVE 已经可以通过旁路由访问国际互联网！"
+    echo "当前出口 IP: $(curl -s myip.ipip.net)"
+else
+    echo "警告：无法访问外网，请检查旁路由 Passwall 设置。"
+fi
+
+echo "------------------------------------------"
+echo "提示：任务完成后，请务必执行 ./to_main.sh 恢复默认状态。"

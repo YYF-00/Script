@@ -1,0 +1,21 @@
+#!/bin/bash
+MAIN_GW="192.168.50.1"
+USER_IP=$(echo $SSH_CLIENT | awk '{print $1}')
+
+echo "正在恢复主路由模式..."
+
+# 1. 恢复网关
+ip route del default 2>/dev/null
+ip route add default via $MAIN_GW
+
+# 2. 恢复 DNS
+if [ -f /etc/resolv.conf.bak ]; then
+    mv /etc/resolv.conf.bak /etc/resolv.conf
+else
+    echo "nameserver $MAIN_GW" > /etc/resolv.conf
+fi
+
+# 3. 清理临时路由（可选，不清理也不影响）
+ip route del $USER_IP via $MAIN_GW 2>/dev/null
+
+echo "恢复完成。当前出口 IP: $(curl -s myip.ipip.net)"
