@@ -1,0 +1,167 @@
+pipeline {
+    agent any
+    environment {
+        PROGRAM_NAME    = 'XXXXX'
+        DEPLOY_DIR      = "XXXXX"
+        MVN_CMD         = "mvn -B -e"
+        JAVA_OPTS       = "-Xms512m -Xmx2g"
+        SPRING_PROFILE  = "dev"
+        GIT_REPO        = "XXXXX"
+        GIT_CREDENTIALS = 'XXXXX'
+    }
+
+    tools {
+        jdk 'OpenJDK17'
+    }
+
+    stages {
+        stage('拉取代码') {
+            steps {
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: '*/master']],
+                    userRemoteConfigs: [[
+                        url: "${GIT_REPO}",
+                        credentialsId: "${GIT_CREDENTIALS}"
+                    ]]
+                ])
+                echo "✅ 源码拉取完成，当前分支：master"
+            }
+        }
+
+        stage('Maven打包') {
+            steps {
+                sh '''
+                    source /etc/profile && source ~/.bashrc &&
+                    echo "========================================"
+                    echo "开始 Maven 打包（clean install）"
+                    echo "========================================"
+                    ${MVN_CMD} clean install -Dmaven.test.skip=true
+                    ARTIFACT_ID=$(${MVN_CMD} help:evaluate -Dexpression=project.artifactId -q -DforceStdout)
+                    VERSION=$(${MVN_CMD} help:evaluate -Dexpression=project.version -q -DforceStdout)
+                    echo "${ARTIFACT_ID}-${VERSION}.jar" > jar.info
+                    echo "✅ 打包完成！Jar 包已安装到本地 Maven 仓库，信息写入 jar.info"
+                '''
+            }
+        }
+
+ 		stage('停止旧服务') {
+            steps {
+                sh '''
+                    . /etc/profile && source ~/.bashrc &&
+                    set -e
+                    echo "========================================"
+                    echo "停止旧服务"
+                    echo "========================================"
+                    JAR_NAME=$(cat jar.info)
+
+                    # 2. 核心更改：通过 DEPLOY_DIR 路径精准匹配 PID，防止误杀同名包
+                    pid=$(ps -ef | grep "${DEPLOY_DIR}" | grep "${JAR_NAME}" | grep -v grep | awk '{print $2}')
+
+                    if [ -n "$pid" ]; then
+                      echo "检测到旧进程 PID: $pid，尝试优雅停止..."
+                      kill -15 "$pid"
+                      wait_seconds=0; max_wait=60
+                      while ps -p "$pid" > /dev/null 2>&1; do
+                        if [ $wait_seconds -ge $max_wait ]; then
+                          echo "超时，强制杀死进程 $pid"; kill -9 "$pid"; break
+                        fi
+                        sleep 10; wait_seconds=$((wait_seconds+10))
+                      done
+                      if ps -p "$pid" > /dev/null 2>&1; then
+                        echo "❌ 强制终止后进程仍存在，请手动检查"
+                        exit 1
+                      else
+                        echo "✅ 旧进程已完全退出"
+                      fi
+                    else
+                      echo "✅ 未检测到需停止的旧进程"
+                    fi
+                '''
+            }
+        }
+
+        stage('部署并启动') {
+            steps {
+                sh '''
+                    source /etc/profile && source ~/.bashrc &&
+                    set -e
+                    echo "========================================"
+                    echo "部署并启动新服务"
+                    echo "========================================"
+                    JAR_NAME=$(cat jar.info)
+
+                    mkdir -p "${DEPLOY_DIR}"
+                    chmod -R 777 "${DEPLOY_DIR}"
+
+                    cp -f "target/${JAR_NAME}" "${DEPLOY_DIR}/"
+                    cd "${DEPLOY_DIR}"
+
+                    JENKINS_NODE_COOKIE=dontkillme
+
+                    # 3. 核心更改：启动时注入路径标识 -Ddeploy.path，方便下次精准停止和检查
+                    nohup java ${JAVA_OPTS} -Ddeploy.path="${DEPLOY_DIR}" -jar "${JAR_NAME}" --spring.profiles.active=${SPRING_PROFILE} > nohup.out 2>&1 &
+
+                    sleep 2
+
+                    # 同样使用路径精准抓取新进程 PID
+                    new_pid=$(ps -ef | grep "${DEPLOY_DIR}" | grep "${JAR_NAME}" | grep -v grep | awk '{print $2}')
+
+                    if [ -z "$new_pid" ]; then
+                      echo "❌ 启动失败，查看日志："
+                      tail -n 50 nohup.out
+                      exit 1
+                    fi
+
+                    max_wait=60; interval=5; elapsed=0; status_ok=false
+                    while [ $elapsed -lt $max_wait ]; do
+                      if ! ps -p "$new_pid" > /dev/null 2>&1; then
+                        echo "❌ 进程已退出，启动失败"
+                        tail -n 20 nohup.out
+                        exit 1
+                      fi
+                      if grep -qE "Started .* in .* seconds" nohup.out || grep -q "Tomcat started on port" nohup.out; then
+                        status_ok=true; break
+                      fi
+                      echo "⏳ (${elapsed}s/${max_wait}s) 等待应用启动中..."
+                      sleep $interval; elapsed=$((elapsed+interval))
+                    done
+
+                    if [ "$status_ok" = true ]; then
+                      echo -e "\n🎉 应用启动成功！"
+                      echo "部署目录：${DEPLOY_DIR}"
+                      echo "进程 PID：${new_pid}"
+                    else
+                      echo -e "\n❌ 启动超时"
+                      tail -n 20 nohup.out
+                      exit 1
+                    fi
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "========================================"
+            echo "✅ 后端部署流水线执行成功！"
+            echo "核心配置："
+            echo "1. Maven 命令：clean install -Dmaven.test.skip=true"
+            echo "2. 日志查看：tail -f ${DEPLOY_DIR}/nohup.out"
+            echo "========================================"
+        }
+        failure {
+            echo "========================================"
+            echo "❌ 部署失败，请查看日志：tail -f ${DEPLOY_DIR}/nohup.out"
+            echo "========================================"
+        }
+        always {
+            // 直接清理，不再指定 node 标签
+            cleanWs(
+                deleteDirs: true,
+                patterns: [[pattern: "**/working/${PROGRAM_NAME}/api/**", type: 'EXCLUDE']]
+            )
+            echo "✅ 工作空间已清理"
+        }
+    }
+}
