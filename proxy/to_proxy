@@ -1,35 +1,136 @@
 #!/bin/bash
 
-# 1. 变量定义
+set -e
+
 MAIN_GW="192.168.50.1"
 SIDE_GW="192.168.50.11"
-# 自动获取你当前 SSH 连接的客户端 IP
+LAN_NET="192.168.50.0/24"
+
+echo "================================================"
+echo "[TO_PROXY] 开始切换旁路由"
+echo "================================================"
+
+########################################
+# 获取 SSH 客户端 IP
+########################################
+
 USER_IP=$(echo $SSH_CLIENT | awk '{print $1}')
 
-echo "------------------------------------------"
-echo "检测到当前远程登录 IP: $USER_IP"
-echo "步骤 1: 正在锁定回程路由，防止 VPN 断连..."
+echo
+echo "[1] SSH_CLIENT: $USER_IP"
 
-# 2. 核心保护：强制让发往你电脑的包走主路由
-ip route add $USER_IP via $MAIN_GW 2>/dev/null
+########################################
+# 判断是否局域网 IP
+########################################
 
-# 3. 切换默认网关和 DNS
-echo "步骤 2: 正在将默认网关指向旁路由 $SIDE_GW ..."
-ip route del default 2>/dev/null
-ip route add default via $SIDE_GW
+is_lan_ip() {
+    ipcalc -n "$1/24" 2>/dev/null | grep -q "192.168.50.0"
+}
 
-cp /etc/resolv.conf /etc/resolv.conf.bak 2>/dev/null
-echo "nameserver $SIDE_GW" > /etc/resolv.conf
-echo "nameserver $MAIN_GW" >> /etc/resolv.conf
+########################################
+# 关闭 rp_filter
+########################################
 
-# 4. 连通性检查
-echo "步骤 3: 检查网络加速状态..."
-if curl -I -m 5 https://www.google.com | grep -q "HTTP/"; then
-    echo "成功：PVE 已经可以通过旁路由访问国际互联网！"
-    echo "当前出口 IP: $(curl -s myip.ipip.net)"
-else
-    echo "警告：无法访问外网，请检查旁路由 Passwall 设置。"
+echo
+echo "[2] 关闭 rp_filter"
+
+echo 0 > /proc/sys/net/ipv4/conf/all/rp_filter
+echo 0 > /proc/sys/net/ipv4/conf/default/rp_filter
+
+########################################
+# 显示当前路由
+########################################
+
+echo
+echo "[3] 当前路由"
+
+ip route
+
+########################################
+# 锁定 SSH 回程
+########################################
+
+if [ -n "$USER_IP" ]; then
+
+    if [[ "$USER_IP" =~ ^192\.168\.50\. ]]; then
+
+        echo
+        echo "[4] 检测到局域网 SSH"
+        echo "[4] 不添加回程锁定"
+
+    else
+
+        echo
+        echo "[4] 检测到外网/VPN SSH"
+
+        echo "[4] 锁定 SSH 回程走主路由"
+
+        ip route replace $USER_IP via $MAIN_GW
+
+        echo "[4] 已添加:"
+        echo "    $USER_IP via $MAIN_GW"
+    fi
 fi
 
-echo "------------------------------------------"
-echo "提示：任务完成后，请务必执行 ./to_main.sh 恢复默认状态。"
+########################################
+# 备份 DNS
+########################################
+
+echo
+echo "[5] 备份 DNS"
+
+cp /etc/resolv.conf /etc/resolv.conf.bak 2>/dev/null || true
+
+########################################
+# 切换默认网关
+########################################
+
+echo
+echo "[6] 切换默认网关"
+
+ip route replace default via $SIDE_GW
+
+########################################
+# DNS
+########################################
+
+echo
+echo "[7] 配置 DNS"
+
+cat >/etc/resolv.conf <<EOF
+nameserver 223.5.5.5
+nameserver 1.1.1.1
+EOF
+
+########################################
+# 最终路由
+########################################
+
+echo
+echo "[8] 当前路由"
+
+ip route
+
+########################################
+# 网络测试
+########################################
+
+echo
+echo "[9] 测试旁路由"
+
+ping -c 2 $SIDE_GW || true
+
+echo
+echo "[10] 测试公网"
+
+curl -I -m 10 https://www.google.com || true
+
+echo
+echo "[11] 当前出口 IP"
+
+curl -s myip.ipip.net || true
+
+echo
+echo "================================================"
+echo "[TO_PROXY] 完成"
+echo "================================================"

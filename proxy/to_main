@@ -1,21 +1,78 @@
 #!/bin/bash
+
+set -e
+
 MAIN_GW="192.168.50.1"
+
+echo "================================================"
+echo "[TO_MAIN] 恢复主路由"
+echo "================================================"
+
+########################################
+# 获取 SSH IP
+########################################
+
 USER_IP=$(echo $SSH_CLIENT | awk '{print $1}')
 
-echo "正在恢复主路由模式..."
+########################################
+# 恢复网关
+########################################
 
-# 1. 恢复网关
-ip route del default 2>/dev/null
-ip route add default via $MAIN_GW
+echo
+echo "[1] 恢复默认网关"
 
-# 2. 恢复 DNS
-if [ -f /etc/resolv.conf.bak ]; then
-    mv /etc/resolv.conf.bak /etc/resolv.conf
-else
-    echo "nameserver $MAIN_GW" > /etc/resolv.conf
+ip route replace default via $MAIN_GW
+
+########################################
+# 删除 SSH 特殊路由
+########################################
+
+if [ -n "$USER_IP" ]; then
+
+    if [[ ! "$USER_IP" =~ ^192\.168\.50\. ]]; then
+
+        echo
+        echo "[2] 删除 SSH 锁定"
+
+        ip route del $USER_IP via $MAIN_GW 2>/dev/null || true
+    fi
 fi
 
-# 3. 清理临时路由（可选，不清理也不影响）
-ip route del $USER_IP via $MAIN_GW 2>/dev/null
+########################################
+# 恢复 DNS
+########################################
 
-echo "恢复完成。当前出口 IP: $(curl -s myip.ipip.net)"
+echo
+echo "[3] 恢复 DNS"
+
+if [ -f /etc/resolv.conf.bak ]; then
+    cp /etc/resolv.conf.bak /etc/resolv.conf
+else
+    cat >/etc/resolv.conf <<EOF
+nameserver 223.5.5.5
+nameserver 1.1.1.1
+EOF
+fi
+
+########################################
+# 当前路由
+########################################
+
+echo
+echo "[4] 当前路由"
+
+ip route
+
+########################################
+# 当前出口
+########################################
+
+echo
+echo "[5] 当前出口 IP"
+
+curl -s myip.ipip.net || true
+
+echo
+echo "================================================"
+echo "[TO_MAIN] 完成"
+echo "================================================"
